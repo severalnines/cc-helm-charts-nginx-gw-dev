@@ -1,0 +1,116 @@
+name: Release Charts Dev
+
+on:
+  push:
+    paths:
+      #   - "**/Chart.yaml"
+      - "charts/kuber-agent/Chart.yaml"
+    branches:
+      - develop
+  workflow_dispatch:
+
+
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  dev-repo:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+        
+      - name: Fetch gh-pages branch
+        run: |
+          set -euo pipefail
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages || true
+          git show-ref --verify --quiet refs/remotes/origin/gh-pages || {
+            echo "gh-pages branch does not exist on origin. Create it once in this repo (fork) and re-run."
+            exit 1
+          }
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Install chart-releaser (cr)
+        run: |
+          set -euo pipefail
+          CR_VERSION="1.7.0"
+          curl -sSL -o cr.tgz \
+            "https://github.com/helm/chart-releaser/releases/download/v${CR_VERSION}/chart-releaser_${CR_VERSION}_linux_amd64.tar.gz"
+          tar -xzf cr.tgz cr
+          sudo mv cr /usr/local/bin/cr
+          cr version
+
+      # Uncomment this to package all charts
+      # - name: Package charts
+      #   run: |
+      #     set -euo pipefail
+      #     rm -rf .cr-release-packages
+      #     mkdir -p .cr-release-packages
+
+      #     # Adjust if your charts are not in charts/*
+      #     for d in charts/*; do
+      #       if [ -f "$d/Chart.yaml" ]; then
+      #         cr package "$d" --package-path .cr-release-packages
+      #       fi
+      #     done
+
+
+      - name: Package kuber-agent chart only
+        run: |
+          set -euo pipefail
+          rm -rf .cr-release-packages
+          mkdir -p .cr-release-packages
+          cr package charts/kuber-agent --package-path .cr-release-packages
+
+      - name: Upload packages to GitHub Releases (DEV releases)
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY##*/}"
+
+          cr upload \
+            --owner "$OWNER" \
+            --git-repo "$REPO" \
+            --package-path .cr-release-packages \
+            --skip-existing \
+            --make-release-latest=false \
+            --release-name-template "{{ .Name }}-{{ .Version }}-dev"
+            
+      - name: Ensure .cr-index exists (fix for cr index)
+        run: |
+          set -euo pipefail
+          mkdir -p .cr-index
+
+
+      - name: Update gh-pages/dev/index.yaml
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY##*/}"
+
+          cr index \
+            --owner "$OWNER" \
+            --git-repo "$REPO" \
+            --pages-branch gh-pages \
+            --index-path .cr-index/index.yaml \
+            --pages-index-path dev/index.yaml \
+            --release-name-template "{{ .Name }}-{{ .Version }}-dev" \
+            --push

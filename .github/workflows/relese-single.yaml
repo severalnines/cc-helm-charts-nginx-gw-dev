@@ -1,0 +1,50 @@
+name: Release Single Chart
+
+on:
+  workflow_dispatch:
+    inputs:
+      chart:
+        description: "Select chart to release"
+        required: true
+        type: choice
+        options:
+          - ccx
+          - ccxdeps
+          - clustercontrol
+          - kuber-agent
+          - observability
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+
+      - name: Package Selected Chart
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          mkdir -p .cr-release-packages
+          helm package charts/${{ github.event.inputs.chart }} --destination .cr-release-packages
+
+      - name: Release Selected Chart
+        uses: helm/chart-releaser-action@v1.5.0
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        with:
+          charts_dir: charts
+          config: .github/ci/cr.yaml
+          skip_packaging: true
