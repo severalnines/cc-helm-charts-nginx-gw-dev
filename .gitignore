@@ -1,0 +1,4 @@
+# local build output of scripts/build-charts.sh (same dir CI uses)
+.cr-release-packages/
+# helm dependency build artifacts — dependencies are resolved from GAR, not committed
+charts/clustercontrol/charts/
