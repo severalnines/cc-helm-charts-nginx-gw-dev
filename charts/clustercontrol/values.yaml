@@ -1,0 +1,258 @@
+# Default values for cluster control.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# REQUIRED fqdn for cluster control instance provided with this cc instance.
+fqdn: &fqdn localhost
+
+# Set to true to use development versions of images
+devBuild: false
+
+# ClusterControl helm chart will ship victoria metrics for monitoring by default
+# host of your prometheus/victoria metrics instance, MUST be available on port 9090
+# REQUIRED, if not provided, metrics and dashboards won't be available
+prometheusHostname: # defaults to .Release.name-monitoring-server
+
+# k8s storage class used for PVs across cc. This is a global variable applied to all PVCs/PVs to simplify things.
+# OPTIONAL, if not provided, default storage class will be used
+storageClassName:
+
+# OPTIONAL install oracle mysql operator?
+# You should set this to false if operator is already installed in your cluster or using external DB for ClusterControl
+installMysqlOperator: true
+# OPTIONAL create databases using mysql operator? If false, you must create the databases yourself.
+createDatabases: true
+
+# MySQL operator configuration
+# Images are pulled from our Artifact Registry mirror (Oracle prunes old image
+# tags from container-registry.oracle.com, which breaks installs).
+mysql-operator:
+  image:
+    # operator deployment image: <registry>/<repository>/community-operator:<tag>
+    registry: europe-docker.pkg.dev
+    repository: severalnines-public/clustercontrol/mirror/mysql
+  envs:
+    # registry/repository the operator itself pulls community-server,
+    # community-router and the sidecar (community-operator) images from
+    imagesDefaultRegistry: europe-docker.pkg.dev
+    imagesDefaultRepository: severalnines-public/clustercontrol/mirror/mysql
+    k8sClusterDomain: cluster.local
+# OPTIONAL install Gateway API controller (NGINX Gateway Fabric)? Set to false if you already
+# have a Gateway API implementation installed in your cluster.
+# REQUIRES the Gateway API CRDs (standard + experimental channel) to be installed in the
+# cluster beforehand - this chart does not install them. See README.md.
+gatewayController:
+  enabled: True
+
+# this section allows to deploy a single default ClusterControl instance in the k8s cluster
+cmon:
+  license: # YOUR LICENSE HERE
+  sshKeysSecretName: # YOUR SSH keys secret name here
+  # REQUIRED, ClusterControl id, if unsure, leave default
+  id: '00000000-0000-0000-0000-000000000000'
+  # rpc username
+  user: ccrpc
+  # rpc password
+  password: # SuperS3cr3tVeryL0ngP@ssw0rd
+  # mysql database used for ClusterControl
+  # if not provided, default values will be used, default point to mysql operator innodb cluster (included as a chart dependency)
+  db:
+    # overwrite the below if you are using external DB for ClusterControl
+    host: # defaults to .Release.name
+    port: 3306
+    name: cmon
+    user: cmon
+    password: cmon
+  image: severalnines/cmon:2.4.0-20548
+  devImage: severalnines/cmon:2.4.0-20548
+  extra_args: # extra arguments for ClusterControl binary
+    - -s
+    - --no-log-db
+    - -b 0.0.0.0
+    - --mysql-connect-retries=5
+    - -d
+  #  resources:
+  #    requests:
+  #      cpu: 100m
+  #      memory: 1Gi
+  sd:
+    image: severalnines/cmon-sd:latest
+    devImage: severalnines/cmon-sd:latest
+  #    resources:
+  #      requests:
+  #        cpu: 100m
+  #        memory: 1Gi
+  exporter:
+    image: severalnines/cmon_exporter-linux-amd64:main
+    devImage: severalnines/cmon_exporter-linux-amd64:main
+  #    resources:
+  #      requests:
+  #        cpu: 100m
+  #        memory: 1Gi
+  ccmgr:
+    image: europe-docker.pkg.dev/severalnines-public/clustercontrol/ccmgr:latest
+    devImage: europe-docker.pkg.dev/severalnines-public/clustercontrol/ccmgr:main-dev-latest
+  #    resources:
+  #      requests:
+  #        cpu: 100m
+  #        memory: 1Gi
+  kuberProxy:
+    image: europe-docker.pkg.dev/severalnines-public/clustercontrol/kuber-proxy:latest
+    devImage: europe-docker.pkg.dev/severalnines-public/clustercontrol/kuber-proxy:main-dev-latest
+    #    resources:
+    #      requests:
+    #        cpu: 100m
+    #        memory: 1Gi
+    env:
+      HTTP_PORT: 8081
+      GRPC_PORT: 50051
+      JWT_SECRET_PATH: /usr/share/ccmgr/jwt_secret.key
+      BASE_DIR: /usr/share/kuber-proxy
+      STATE_STORAGE: jetstream
+      DAPR_APP_ID: kuber-proxy
+      # Optional environment variables (uncomment and configure as needed)
+      # PROXY_CERT_PATH: /path_to/server.crt
+      # PROXY_KEY_PATH: /path_to/server.key
+  gateway:
+    # Although not strictly necessary it's **strongly** recommended to expose cmon via the
+    # Gateway API
+    enabled: true
+    # OPTIONAL GatewayClass name - "nginx" is NGINX Gateway Fabric's default
+    gatewayClassName: nginx
+    # OPTIONAL ssl configuration for the HTTPS listener
+    ssl:
+      # OPTIONAL cert-manager ClusterIssuer. When set, the Gateway is annotated and
+      # cert-manager owns the certificate Secret - the chart generates nothing.
+      # When empty, the chart issues a self-signed certificate instead (see below).
+      clusterIssuer: # letsencrypt-prod
+      # OPTIONAL TLS secret name for the HTTPS listener, defaults to "cmon-cert"
+      secretName:
+      # Used only when clusterIssuer is empty. The certificate always covers .Values.fqdn;
+      # add the node/LoadBalancer IP here if you reach the gateway by address as well.
+      # An existing Secret is always reused, so upgrades never rotate the cert.
+      selfSigned:
+        extraDNSNames: []
+        extraIPs: [] # - 192.168.40.12
+        days: 3650
+    # OPTIONAL backend TLS from the gateway to cmon-master:9501/:19051 (mirrors the old
+    # nginx.ingress.kubernetes.io/backend-protocol: "HTTPS" annotation).
+    # Gateway API's BackendTLSPolicy always validates the backend certificate (no
+    # "skip verify" option), so this needs a real CA to trust - unlike the old ingress
+    # annotations, which didn't verify at all. Leave disabled (plaintext to cmon-master,
+    # which is in-cluster only) unless you provide caCertificateRef below.
+    backendTLS:
+      enabled: false
+      # ConfigMap or Secret name (in this chart's namespace) with the CA certs the
+      # cmon-master backends present, under key "ca.crt". REQUIRED when enabled is true.
+      # It must trust BOTH backends: ccmgr's cert (below - readable from the
+      # <release>-ccmgr-tls Secret) and cmon's 9501 cert, which cmon generates itself at
+      # runtime and must be extracted per install. See README.md "Backend TLS".
+      caCertificateRef:
+      # Replace ccmgr's own self-signed cert - it ships with no CN and no SAN, so no
+      # BackendTLSPolicy can ever verify it and "/" returns 502. The chart issues one
+      # with SAN "localhost" and the init container installs it on every pod start.
+      # Set false only if you manage /usr/share/ccmgr/server.crt yourself.
+      provisionCcmgrCert: true
+
+# External dependencies and helm charts below
+# For exact documentation refer to the official helm chart documentation
+# https://github.com/mysql/mysql-operator/blob/trunk/helm/mysql-innodbcluster/values.yaml
+
+mysql-innodbcluster:
+  enabled: true
+  credentials:
+    root:
+      user: cmon
+      password: cmon
+      host: '%'
+  serverInstances: 1
+  tls:
+    useSelfSigned: true
+  datadirVolumeClaimTemplate:
+    resources:
+      requests:
+        storage: 2Gi
+
+# https://github.com/VictoriaMetrics/helm-charts/tree/master/charts/victoria-metrics-single#parameters
+# These defaults provide minimal needed for ClusterControl metrics and dashboards to work
+# Feel free to adjust as needed, however keep in mind required labels and annotations and service discovery
+monitoring:
+  enabled: true
+  cmon_sd_url: &cmon_sd_url 'http://cmon-master:8080'
+  server:
+    image:
+      # mirrored from docker.io/victoriametrics/victoria-metrics
+      repository: europe-docker.pkg.dev/severalnines-public/clustercontrol/mirror/victoriametrics/victoria-metrics
+    service:
+      servicePort: 9090
+      clusterIP: null
+    statefulSet:
+      enabled: false
+    podAnnotations:
+      prometheus.io/scrape: 'true'
+      prometheus.io/port: '8428'
+    extraArgs:
+      envflag.enable: 'true'
+      envflag.prefix: VM_
+      loggerFormat: json
+      promscrape.maxScrapeSize: 56777216
+      maxLabelsPerTimeseries: 99
+    scrape:
+      enabled: true
+      configMap: ''
+      ### below is standard victoria metrics config, change as needed
+      ### provided is simple, default config
+      config:
+        global:
+          scrape_interval: 1m
+          scrape_timeout: 10s
+          external_labels:
+            #REQUIRED monitor: clustercontrol is required DO NOT REMOVE
+            monitor: clustercontrol
+            #REQUIRED use_cmon_sd is required DO NOT REMOVE
+            use_cmon_sd: true
+      extraScrapeConfigs:
+        # REQUIRED cmon service discoveri is required for cmon metrics and dashboards to work
+        ### CMON SERVICE DISCOVERY
+        - job_name: cmon-sd
+          http_sd_configs:
+            - url: *cmon_sd_url
+          relabel_configs:
+            - source_labels: [__address__]
+              regex: '(.*):(\d+)'
+              target_label: ip
+              replacement: '${1}'
+            - target_label: use_cmon_sd
+              replacement: true
+        ### END CMON SERVICE DISCOVERY
+
+# https://github.com/nginx/nginx-gateway-fabric/blob/main/charts/nginx-gateway-fabric/values.yaml
+# NOTE: field names below (nginxGateway.image.*, nginx.image.*) are taken from the upstream
+# chart's documented values reference - re-verify with
+# `helm show values oci://ghcr.io/nginx/charts/nginx-gateway-fabric --version 2.6.7`
+# against the exact 2.6.7 tag before relying on them, and update scripts/mirror-to-gar.sh's
+# UPSTREAM_REGISTRY map (top path segment -> ghcr.io) accordingly.
+nginx-gateway-fabric:
+  nginxGateway:
+    gatewayClassName: nginx
+    # REQUIRED for the TCPRoute used to expose kuber-proxy's gRPC port (50051) below -
+    # needs the experimental Gateway API CRD channel installed in the cluster.
+    gwAPIExperimentalFeatures:
+      enable: true
+    # REQUIRED for the cmon-route's SnippetsFilter (templates/gateway.yaml) - without this,
+    # NGF reports the filter's extensionRef as "Not found" (feature-gated, not a real missing
+    # object) and routes the whole HTTPRoute to its synthetic always-500 fallback backend.
+    snippets:
+      enable: true
+    image:
+      # mirrored from ghcr.io/nginx/nginx-gateway-fabric
+      # NOTE the "nginx/" segment is required so scripts/mirror-to-gar.sh's UPSTREAM_REGISTRY
+      # reverse-mapping (top path segment -> registry host) can reconstruct the real upstream ref
+      repository: europe-docker.pkg.dev/severalnines-public/clustercontrol/mirror/nginx/nginx-gateway-fabric
+  nginx:
+    image:
+      # mirrored from ghcr.io/nginx/nginx-gateway-fabric/nginx
+      repository: europe-docker.pkg.dev/severalnines-public/clustercontrol/mirror/nginx/nginx-gateway-fabric/nginx
+    service:
+      #      loadBalancerIP: xxx.xxx.xxx.xxx
+      externalTrafficPolicy: 'Local'

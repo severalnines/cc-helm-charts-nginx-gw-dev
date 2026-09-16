@@ -1,0 +1,5 @@
+{{/*
+Superseded by templates/gateway.yaml (Gateway API / NGINX Gateway Fabric).
+This file is intentionally left empty; delete it with `git rm` when you commit
+the migration (see the migration guide) instead of leaving a dead file around.
+*/}}

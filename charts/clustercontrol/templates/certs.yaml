@@ -1,0 +1,86 @@
+{{/*
+TLS material for the Gateway.
+
+Two independent certificates, both optional, both regenerated only when absent:
+
+  * FRONTEND - what the Gateway's HTTPS listener serves to browsers. Skipped entirely
+    when cmon.gateway.ssl.clusterIssuer is set, because cert-manager then owns the
+    Secret (it watches Gateway resources directly since 1.15) and a chart-generated
+    one would fight it.
+
+  * CCMGR BACKEND - what ccmgr serves on 19051. ccmgr's own self-signed cert carries no
+    CN and no SAN, which nothing can verify, so BackendTLSPolicy rejects it and "/"
+    returns 502. The init container copies this one over it on every start.
+
+Both reuse the existing Secret when one is already present, so an upgrade never rotates
+a certificate out from under a running deployment (helm's lookup returns empty during
+`helm template` and `--dry-run`, which is why a dry-run preview shows a different cert
+than the real install produces - that's expected, not drift).
+*/}}
+{{- if .Values.cmon.gateway.enabled }}
+{{- $ssl := dig "ssl" (dict) .Values.cmon.gateway | default (dict) }}
+{{- $issuer := dig "clusterIssuer" "" $ssl | default "" }}
+
+{{/* ---------- frontend ---------- */}}
+{{- if not $issuer }}
+{{- $name := dig "secretName" "" $ssl | default "cmon-cert" }}
+{{- $fqdn := .Values.fqdn | required ".Values.fqdn is required to generate a TLS certificate" }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
+{{- $crt := "" }}
+{{- $key := "" }}
+{{- if and $existing $existing.data (index ($existing.data | default (dict)) "tls.crt") }}
+{{- $crt = index $existing.data "tls.crt" }}
+{{- $key = index $existing.data "tls.key" }}
+{{- else }}
+{{- $self := dig "selfSigned" (dict) $ssl | default (dict) }}
+{{- $dns := concat (list $fqdn) (dig "extraDNSNames" (list) $self | default (list)) }}
+{{- $ips := dig "extraIPs" (list) $self | default (list) }}
+{{- $days := dig "days" 3650 $self | default 3650 | int }}
+{{- $gen := genSelfSignedCert $fqdn $ips $dns $days }}
+{{- $crt = $gen.Cert | b64enc }}
+{{- $key = $gen.Key | b64enc }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "cc.labels" . | nindent 4 }}
+data:
+  tls.crt: {{ $crt }}
+  tls.key: {{ $key }}
+{{- end }}
+
+{{/* ---------- ccmgr backend ---------- */}}
+{{- $bt := dig "backendTLS" (dict) .Values.cmon.gateway | default (dict) }}
+{{- if dig "provisionCcmgrCert" true $bt }}
+{{- $name := printf "%s-ccmgr-tls" (include "cc.name" .) }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
+{{- $crt := "" }}
+{{- $key := "" }}
+{{- if and $existing $existing.data (index ($existing.data | default (dict)) "tls.crt") }}
+{{- $crt = index $existing.data "tls.crt" }}
+{{- $key = index $existing.data "tls.key" }}
+{{- else }}
+{{/* "localhost" is mandatory - BackendTLSPolicy below validates against that hostname,
+     matching the SAN cmon's own 9501 certificate declares. */}}
+{{- $dns := list "localhost" "cmon-master" (printf "cmon-master.%s.svc.cluster.local" .Release.Namespace) }}
+{{- $gen := genSelfSignedCert "cmon-master" (list) $dns 3650 }}
+{{- $crt = $gen.Cert | b64enc }}
+{{- $key = $gen.Key | b64enc }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "cc.labels" . | nindent 4 }}
+data:
+  tls.crt: {{ $crt }}
+  tls.key: {{ $key }}
+{{- end }}
+{{- end }}
