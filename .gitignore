@@ -2,3 +2,4 @@
 .cr-release-packages/
 # helm dependency build artifacts — dependencies are resolved from GAR, not committed
 charts/clustercontrol/charts/
+charts/*/Chart.lock
