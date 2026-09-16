@@ -1,0 +1,24 @@
+** Please be patient while the chart is being deployed **
+    
+Default ssh keys are available at:
+{{- range $path, $_ := .Files.Glob "files/ssh-keys/*" }}
+/root/.ssh-keys/{{- regexReplaceAll "(.*)/" $path "" }}
+{{- end }}
+
+{{- if .Values.cmon.sshKeysSecretName }}
+
+and your user provided keys in /root/.ssh-keys-user
+{{- end }}
+
+{{- if .Values.cmon.gateway.enabled }}
+
+Your ClusterControl can be accessed at https://{{ .Values.fqdn | required ".Values.fqdn is required" }}
+
+{{- else }}
+cmon API is accessible within the cluster via cmon-master:9501
+ClusterControl V2 is accessible within the cluster via cmon-master:3000
+Is is *HIGHLY* recommended to use the Gateway as ClusterControl V2 requires cmon API to be exposed and available
+{{- end }}
+
+Off you go and create your first database cluster!
+https://docs.severalnines.com/docs/clustercontrol/user-guide-gui-v2/home/create-a-database-cluster/
