@@ -29,4 +29,32 @@ entries:
     urls:
     - https://github.com/severalnines/cc-helm-charts-nginx-gw-dev/releases/download/clustercontrol-0.4.0-ngf.1/clustercontrol-0.4.0-ngf.1.tgz
     version: 0.4.0-ngf.1
-generated: "2026-09-16T14:52:34.903819433Z"
+  - apiVersion: v2
+    appVersion: 2.4.0-20548
+    created: "2026-09-21T22:06:45.647738175Z"
+    dependencies:
+    - condition: installMysqlOperator
+      name: mysql-operator
+      repository: oci://europe-docker.pkg.dev/severalnines-public/clustercontrol/helm-charts
+      version: 2.0.21
+    - condition: createDatabases
+      name: mysql-innodbcluster
+      repository: oci://europe-docker.pkg.dev/severalnines-public/clustercontrol/helm-charts
+      version: 2.0.21
+    - alias: monitoring
+      condition: monitoring.enabled
+      name: victoria-metrics-single
+      repository: oci://europe-docker.pkg.dev/severalnines-public/clustercontrol/helm-charts
+      version: 0.9.16
+    - condition: gatewayController.enabled
+      name: nginx-gateway-fabric
+      repository: oci://ghcr.io/nginx/charts
+      version: 2.6.8
+    description: A ClusterControl Helm Chart for Kubernetes
+    digest: 822ac527f84f238a299f5de43e36b89556fcf4b6f12909a7a5734b4db6d1976e
+    name: clustercontrol
+    type: application
+    urls:
+    - https://github.com/severalnines/cc-helm-charts-nginx-gw-dev/releases/download/clustercontrol-0.4.0-ngf.1/clustercontrol-0.4.0-ngf.1.tgz
+    version: 0.4.0-ngf.1
+generated: "2026-09-21T22:06:45.647751244Z"
