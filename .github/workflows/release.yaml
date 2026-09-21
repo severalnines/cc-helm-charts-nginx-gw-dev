@@ -17,8 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # Clears the Node 20 deprecation warning from your last run
         with:
+          # cr needs full history to work out which charts changed
           fetch-depth: 0
 
       - name: Configure Git
@@ -27,13 +28,20 @@ jobs:
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4 # Same; verified token is still a valid input in v4, so it's a drop-in
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Release
-        uses: helm/chart-releaser-action@v1.5.0
+        uses: helm/chart-releaser-action@v1.7.0 # Adds the pages_branch input you asked about, plus skip_existing and mark_as_latest as real inputs
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
         with:
           config: .github/ci/cr.yaml
+          # Branch cr writes index.yaml to. Defaults to gh-pages, so this line is only
+          # needed for a different one - and GitHub Pages must point at the SAME branch,
+          # or `helm repo add` 404s while the landing page still renders fine:
+          #   gh api -X PUT repos/<owner>/<repo>/pages \
+          #     -f 'source[branch]=<branch>' -f 'source[path]=/'
+          # Needs v1.7.0+; v1.5.0 hardcoded gh-pages and ignored this input.
+          # pages_branch: gh-pages
