@@ -7,6 +7,10 @@ Access a Kubernetes cluster.
 
 Add a chart helm repository with follow commands:
 
+```bash
 helm repo add s9s https://severalnines.github.io/cc-helm-charts-nginx-gw-dev/
 
 helm repo update
+```
+
+
