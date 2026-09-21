@@ -1,0 +1,228 @@
+{{ if .Values.cmon.gateway.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ include "cc.name" . }}-gateway
+  {{ if (dig "ssl" "clusterIssuer" "" .Values.cmon.gateway) }}
+  annotations:
+    # cert-manager watches Gateways directly (no ingress-shim needed) and creates a
+    # Certificate + auto-populates the "https" listener's certificateRefs Secret below.
+    # Requires cert-manager with Gateway API support enabled (--enable-gateway-api,
+    # default-on since cert-manager 1.15) and the Gateway API CRDs installed - see README.md.
+    cert-manager.io/cluster-issuer: {{ dig "ssl" "clusterIssuer" "" .Values.cmon.gateway }}
+  {{ end }}
+spec:
+  gatewayClassName: {{ .Values.cmon.gateway.gatewayClassName | default "nginx" }}
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: {{ .Values.fqdn }}
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: {{ .Values.fqdn }}
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: {{ dig "ssl" "secretName" "" .Values.cmon.gateway | default "cmon-cert" }}
+    # kuber-proxy gRPC passthrough - replaces the old ingress-nginx.tcp ConfigMap entry
+    # (50051: 'clustercontrol/cmon-master:50051'). Requires the Gateway API experimental
+    # channel + nginxGateway.gwAPIExperimentalFeatures.enable=true (see values.yaml).
+    - name: kuber-proxy-grpc
+      port: 50051
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+---
+# HTTP -> HTTPS redirect
+# replaces nginx.ingress.kubernetes.io/ssl-redirect + force-ssl-redirect
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "cc.name" . }}-http-redirect
+spec:
+  parentRefs:
+    - name: {{ include "cc.name" . }}-gateway
+      sectionName: http
+  hostnames:
+    - {{ .Values.fqdn }}
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+---
+# ClusterControl V2 UI (ccmgr) - was the "-ccmgr-ingress" Ingress, path "/", no rewrite
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "cc.name" . }}-ccmgr-route
+spec:
+  parentRefs:
+    - name: {{ include "cc.name" . }}-gateway
+      sectionName: https
+  hostnames:
+    - {{ .Values.fqdn }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: cmon-master
+          port: 19051
+---
+# cmon API - was the "-cmon-ingress" Ingress, path "/cmon/(.*)" rewritten to "/$1"
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "cc.name" . }}-cmon-route
+spec:
+  parentRefs:
+    - name: {{ include "cc.name" . }}-gateway
+      sectionName: https
+  hostnames:
+    - {{ .Values.fqdn }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /cmon
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: {{ include "cc.name" . }}-cmon-headers
+      backendRefs:
+        - name: cmon-master
+          port: 9501
+---
+# NGINX Gateway Fabric-specific extension standing in for the old
+# nginx.ingress.kubernetes.io/configuration-snippet on the cmon rule. There is no portable
+# Gateway API filter for this (it echoes an upstream response header and rewrites the
+# Set-Cookie path) - this ties the chart to NGINX Gateway Fabric specifically.
+#
+# The old snippet used more_set_headers to rewrite Set-Cookie's Path attribute - that
+# directive comes from the third-party headers-more-nginx-module, which Ingress-NGINX's
+# custom build bundled but NGINX Gateway Fabric's image does not ship ("unknown directive
+# more_set_headers" at config-apply time). proxy_cookie_path is the stock ngx_http_proxy_module
+# equivalent purpose-built for exactly this (rewriting a proxied Set-Cookie's Path attribute),
+# so no extra module is needed.
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
+metadata:
+  name: {{ include "cc.name" . }}-cmon-headers
+spec:
+  snippets:
+    - context: http.server.location
+      value: |
+        proxy_pass_header Server;
+        add_header Server $upstream_http_server;
+        proxy_cookie_path / /;
+---
+# cmon-ssh (SSH terminal proxy) - was "-cmon-ssh-ingress", path "/cmon-ssh/(.*)" -> "/$1"
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "cc.name" . }}-cmon-ssh-route
+spec:
+  parentRefs:
+    - name: {{ include "cc.name" . }}-gateway
+      sectionName: https
+  hostnames:
+    - {{ .Values.fqdn }}
+  rules:
+    # more specific first for readability; Gateway API resolves overlapping HTTPRoute
+    # rules by longest path match regardless of declaration order, matching the old
+    # nginx regex-priority behavior.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /cmon-ssh/cmon/ws
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /cmon/ws
+      backendRefs:
+        - name: cmon-master
+          port: 9511
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /cmon-ssh
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: cmon-master
+          port: 9511
+---
+# kuber-proxy gRPC (port 50051) - was ingress-nginx.tcp ConfigMap entry, not an Ingress at all
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: {{ include "cc.name" . }}-kuber-proxy-grpc-route
+spec:
+  parentRefs:
+    - name: {{ include "cc.name" . }}-gateway
+      sectionName: kuber-proxy-grpc
+  rules:
+    - backendRefs:
+        - name: cmon-master
+          port: 50051
+{{ if (dig "backendTLS" "enabled" false .Values.cmon.gateway) }}
+---
+# replaces nginx.ingress.kubernetes.io/backend-protocol: "HTTPS" on the ccmgr + cmon rules.
+# Unlike the old annotation (which encrypted the wire without verifying anything),
+# Gateway API's BackendTLSPolicy always validates the backend cert - hostname included -
+# it has no "skip verify" mode. cmon-master's self-signed cert on port 9501 declares
+# SAN "DNS:localhost", so "localhost" (not .Values.fqdn) is what has to go here - this is
+# determined by cmon's own cert-generation code, not per-install, so it's not a values.yaml
+# knob. cmon.gateway.backendTLS.caCertificateRef must point at a ConfigMap/Secret (key
+# "ca.crt") containing that same self-signed cert, extracted per-install since it's
+# regenerated per pod (see README.md for the openssl s_client extraction command).
+#
+# NOTE: ccmgr's stock cert on port 19051 ships with no CN and no SAN extension at all
+# ("subject=O = Severalnines AB"), so out of the box nothing passes verification against it
+# and "/" returns 502. Unlike cmon's, that cert is NOT baked into the image - it lives on
+# the cmon-ccmgr-pv PVC at the tls_cert/tls_key paths declared in ccmgr.yaml, so it can be
+# replaced with one carrying SAN "DNS:localhost" (matching the hostname below) and ccmgr
+# restarted to pick it up. See README.md "Backend TLS" for the procedure. Long term ccmgr's
+# own cert generation should emit a proper SAN, making that manual step unnecessary.
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: {{ include "cc.name" . }}-cmon-backend-tls
+spec:
+  targetRefs:
+    - kind: Service
+      group: ""
+      name: cmon-master
+      sectionName: 19051-port
+    - kind: Service
+      group: ""
+      name: cmon-master
+      sectionName: 9501-port
+  validation:
+    caCertificateRefs:
+      - kind: ConfigMap
+        group: ""
+        name: {{ dig "backendTLS" "caCertificateRef" "" .Values.cmon.gateway | required ".Values.cmon.gateway.backendTLS.caCertificateRef is required when backendTLS.enabled is true" }}
+    hostname: localhost
+{{ end }}
+{{ end }}

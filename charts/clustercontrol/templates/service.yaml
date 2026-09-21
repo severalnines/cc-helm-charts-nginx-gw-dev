@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cmon-master
+spec:
+  ports:
+  - port: 9501
+    protocol: TCP
+    targetPort: 9501
+    name: 9501-port
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+    name: 8080-port
+  - port: 9954
+    protocol: TCP
+    targetPort: 9954
+    name: 9954-port
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+    name: 80-port
+  - port: 9511
+    protocol: TCP
+    targetPort: 9511
+    name: 9511-port
+  - port: 19051
+    protocol: TCP
+    targetPort: 19051
+    name: 19051-port
+  - port: 8081
+    protocol: TCP
+    targetPort: 8081
+    name: kuber-proxy-http
+  - port: 50051
+    protocol: TCP
+    targetPort: 50051
+    name: kuber-proxy-grpc
+  selector:
+    app: cmon-master
+    run: cmon-master
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: severalnines
+spec:
+  externalName: severalnines.com
+  type: ExternalName
+  ports:
+  - port: 443
+    name: port-443
+  - port: 80
+    name: port-80
