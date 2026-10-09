@@ -1,4 +1,4 @@
-# Severalnines helm-charts — NGINX Gateway Fabric (development)
+# Severalnines helm-charts — NGINX Gateway Fabric
 
 ![Helm: v3](https://img.shields.io/static/v1?label=Helm&message=v3&color=informational&logo=helm)
 
