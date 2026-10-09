@@ -4,8 +4,8 @@ description: A ClusterControl Helm Chart for Kubernetes
 
 type: application
 
-version: '0.4.0-ngf.2'
-appVersion: '2.4.0-20548'
+version: '0.1.1'
+appVersion: '2.5.0-24068'
 
 # Third-party charts are mirrored to our Google Artifact Registry so upstream
 # repos pruning a release (e.g. mysql-operator 2.0.21) cannot break our builds.

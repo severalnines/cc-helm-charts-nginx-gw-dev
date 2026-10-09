@@ -15,7 +15,7 @@
 # Every step is idempotent; re-running is safe and is the intended way to apply
 # changes. For routine value changes you do NOT need this script - just:
 #
-#   helm upgrade clustercontrol ngf-dev/clustercontrol -n clustercontrol \
+#   helm upgrade clustercontrol s9s-ngfclustercontrol -n clustercontrol \
 #     -f my-values.yaml --version <ver>
 #
 # Usage:
@@ -24,7 +24,7 @@
 #   -f, --values FILE     values file (repeatable)
 #   -n, --namespace NS    default: clustercontrol
 #   -r, --release NAME    default: clustercontrol
-#       --chart REF       default: ngf-dev/clustercontrol (or a local path)
+#       --chart REF       default: s9s-ngf/clustercontrol (or a local path)
 #       --version VER     chart version (required for prereleases like 0.4.0-ngf.2)
 #       --repo-url URL    helm repo to add as the alias in --chart
 #       --skip-crds       cluster CRDs already installed by someone else
@@ -36,7 +36,7 @@ set -euo pipefail
 
 NAMESPACE="clustercontrol"
 RELEASE="clustercontrol"
-CHART="cc-ngf-dev/clustercontrol"
+CHART="s9s-ngf/clustercontrol"
 REPO_ALIAS="cc-ngf-dev"
 REPO_URL="https://severalnines.github.io/cc-helm-charts-nginx-gw-dev/"
 CHART_VERSION=""

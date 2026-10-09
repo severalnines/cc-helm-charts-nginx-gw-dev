@@ -248,11 +248,13 @@ nginx-gateway-fabric:
       # mirrored from ghcr.io/nginx/nginx-gateway-fabric
       # NOTE the "nginx/" segment is required so scripts/mirror-to-gar.sh's UPSTREAM_REGISTRY
       # reverse-mapping (top path segment -> registry host) can reconstruct the real upstream ref
-      repository: europe-docker.pkg.dev/severalnines-public/clustercontrol/mirror/nginx/nginx-gateway-fabric
+      # repository: europe-docker.pkg.dev/severalnines-public/clustercontrol/mirror/nginx/nginx-gateway-fabric  # only when you have role of "Artifactregistry Editor"
+      repository: ghcr.io/nginx/nginx-gateway-fabric
   nginx:
     image:
       # mirrored from ghcr.io/nginx/nginx-gateway-fabric/nginx
-      repository: europe-docker.pkg.dev/severalnines-public/clustercontrol/mirror/nginx/nginx-gateway-fabric/nginx
+      # repository: europe-docker.pkg.dev/severalnines-public/clustercontrol/mirror/nginx/nginx-gateway-fabric/nginx  # only when you have role of "Artifactregistry Editor"
+      repository: ghcr.io/nginx/nginx-gateway-fabric/nginx
     service:
       #      loadBalancerIP: xxx.xxx.xxx.xxx
       externalTrafficPolicy: 'Local'
