@@ -9,7 +9,7 @@ Helm chart repository for the Ingress-NGINX → Gateway API migration. If you wa
 ## Prerequisites
 
 * A Kubernetes cluster you can access, and Helm v3
-* The Gateway API CRDs installed on the cluster (one-time, cluster-wide). They are not shipped by any chart, see [charts/clustercontrol](charts/clustercontrol) for the command. [scripts/install-clustercontrol.sh](scripts/install-clustercontrol.sh) installs them for you.
+* The Gateway API CRDs installed on the cluster (one-time, cluster-wide). They are not shipped by any chart, see [charts/clustercontrol](https://github.com/severalnines/cc-helm-charts-nginx-gw-dev/tree/main/charts/clustercontrol) for the command. [scripts/install-clustercontrol.sh](https://github.com/severalnines/cc-helm-charts-nginx-gw-dev/blob/main/scripts/install-clustercontrol.sh) installs them for you.
 
 ## Add the chart helm repository
 
@@ -26,6 +26,6 @@ helm search repo s9s-ngf
 helm install clustercontrol s9s-ngf/clustercontrol -n clustercontrol --create-namespace
 ```
 
-See [charts/clustercontrol](charts/clustercontrol) for installation and configuration.
+See [charts/clustercontrol](https://github.com/severalnines/cc-helm-charts-nginx-gw-dev/tree/main/charts/clustercontrol) for installation and configuration.
 
-To install or upgrade in one step (CRDs, RBAC and the Helm release), use [scripts/install-clustercontrol.sh](scripts/install-clustercontrol.sh). It adds its own helm repo alias, so it doesn't depend on the `s9s-ngf` one above.
+To install or upgrade in one step (CRDs, RBAC and the Helm release), use [scripts/install-clustercontrol.sh](https://github.com/severalnines/cc-helm-charts-nginx-gw-dev/blob/main/scripts/install-clustercontrol.sh). It adds its own helm repo alias, so it doesn't depend on the `s9s-ngf` one above.
