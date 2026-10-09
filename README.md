@@ -19,14 +19,12 @@ helm repo add s9s-ngf https://severalnines.github.io/cc-helm-charts-nginx-gw-dev
 helm repo update
 ```
 
-> **Note:** chart versions here are prereleases (e.g. `0.4.0-ngf.2`). Helm hides prereleases unless you ask for them, so pass `--devel` or an explicit `--version`:
->
-> ```console
-> helm search repo s9s-ngf --devel
-> helm install clustercontrol s9s-ngf/clustercontrol --version 0.4.0-ngf.2 -n clustercontrol --create-namespace
-> ```
-
 ## Install
+
+```console
+helm search repo s9s-ngf
+helm install clustercontrol s9s-ngf/clustercontrol -n clustercontrol --create-namespace
+```
 
 See [charts/clustercontrol](charts/clustercontrol) for installation and configuration.
 

@@ -2,10 +2,10 @@
 
 ![Helm: v3](https://img.shields.io/static/v1?label=Helm&message=v3&color=informational&logo=helm)
 
-Development build of the ClusterControl chart, exposing ClusterControl through the
+Severalnines Support uild of the ClusterControl chart, exposing ClusterControl through the
 **Gateway API** (NGINX Gateway Fabric) instead of the retired Ingress-NGINX controller.
 
-> **Not for production.** Use [severalnines/helm-charts](https://github.com/severalnines/helm-charts) for that.
+> **Alternative, and not the official Helm Charts of Severalnines.** Use [severalnines/helm-charts](https://github.com/severalnines/helm-charts) for that.
 
 # Dependencies
 This helm chart is designed to provide everything you need to get ClusterControl running in a vanila kubernetes cluster.
@@ -58,12 +58,11 @@ kubectl config set-context --current --namespace=clustercontrol
 ## Install
 
 ```
-helm install clustercontrol s9s-ngf/clustercontrol --version 0.4.0-ngf.2
+helm install clustercontrol s9s-ngf/clustercontrol
 ```
 
-`--version` is required: versions in this repository are semver prereleases, which Helm
-hides unless asked for. `helm search repo s9s-ngf/clustercontrol --versions --devel`
-lists them.
+To pin a specific chart version, add `--version <ver>`. `helm search repo s9s-ngf/clustercontrol --versions`
+lists the available versions.
 
 ## Providing your own SSH keys for ClusterControl to use
 ClusterControl provides an example SSH key for you to use, however
@@ -83,7 +82,7 @@ kubectl create secret generic my-ssh-keys --from-file=key1=/path/to/my/.ssh/id_r
 ### Install or Upgrade ClusterControl
 
 ```
-helm upgrade --install clustercontrol s9s-ngf/clustercontrol --version 0.4.0-ngf.2 \
+helm upgrade --install clustercontrol s9s-ngf/clustercontrol \
   --set cmon.sshKeysSecretName=my-ssh-keys
 ```
 
@@ -92,13 +91,13 @@ helm upgrade --install clustercontrol s9s-ngf/clustercontrol --version 0.4.0-ngf
 ### Create your own values.yaml
 
 ```
-helm show values s9s-ngf/clustercontrol --version 0.4.0-ngf.2 > values.yaml
+helm show values s9s-ngf/clustercontrol > values.yaml
 ```
 
 ### Install / Upgrade using your custom values.yaml
 
 ```
-helm upgrade --install clustercontrol s9s-ngf/clustercontrol --version 0.4.0-ngf.2 -f values.yaml
+helm upgrade --install clustercontrol s9s-ngf/clustercontrol -f values.yaml
 ```
 
 ## Exposing the gateway
@@ -116,7 +115,7 @@ NGINX Gateway Fabric requests a `LoadBalancer` Service. Pick whichever matches y
 nginx-gateway-fabric:
   nginx:
     service:
-      loadBalancerIP: 192.168.40.100
+      loadBalancerIP: 192.168.40.200
 ```
 
 ```yaml
@@ -146,7 +145,7 @@ cmon:
     ssl:
       selfSigned:
         extraIPs:
-          - 192.168.40.100
+          - 192.168.40.200
 ```
 
 Self-signed certificates are untrusted by browsers. Import it on the client, or the
@@ -190,7 +189,7 @@ kubectl create configmap cmon-backend-ca -n clustercontrol --from-file=ca.crt=ca
 Then enable it:
 
 ```console
-helm upgrade clustercontrol s9s-ngf/clustercontrol --version 0.4.0-ngf.2 \
+helm upgrade clustercontrol s9s-ngf/clustercontrol \
   --set cmon.gateway.backendTLS.enabled=true \
   --set cmon.gateway.backendTLS.caCertificateRef=cmon-backend-ca
 ```
@@ -216,7 +215,7 @@ kubectl get svc clustercontrol-gateway-nginx -n clustercontrol
 Then set `fqdn` to a DNS name that resolves to it:
 
 ```console
-helm upgrade --install clustercontrol s9s-ngf/clustercontrol --version 0.4.0-ngf.2 \
+helm upgrade --install clustercontrol s9s-ngf/clustercontrol \
   --set fqdn=<external-ip>.nip.io
 ```
 
@@ -250,7 +249,7 @@ along with building the backend CA bundle. It is a convenience for this migratio
 ### If you already have Oracle MySQL Operator or a Gateway API implementation installed
 
 ```
-helm install clustercontrol s9s-ngf/clustercontrol --version 0.4.0-ngf.2 --debug \
+helm install clustercontrol s9s-ngf/clustercontrol --debug \
   --set fqdn=clustercontrol.example.com --set installMysqlOperator=false --set gatewayController.enabled=false
 ```
 
