@@ -62,13 +62,15 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-CMON image selection - use devImage if devBuild is true, otherwise use regular image
+CMON image selection - use devImage if devBuild is true, otherwise use regular image.
+Either one, when empty, defaults to severalnines/cmon:<Chart.appVersion>.
 */}}
 {{- define "cc.cmonImage" -}}
+{{- $default := printf "severalnines/cmon:%s" .Chart.AppVersion }}
 {{- if .Values.devBuild }}
-{{- .Values.cmon.devImage | required ".Values.cmon.devImage is missing when devBuild is enabled" }}
+{{- .Values.cmon.devImage | default $default }}
 {{- else }}
-{{- .Values.cmon.image | required ".Values.cmon.image is missing" }}
+{{- .Values.cmon.image | default $default }}
 {{- end }}
 {{- end }}
 

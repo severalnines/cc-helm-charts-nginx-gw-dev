@@ -63,8 +63,9 @@ cmon:
     name: cmon
     user: cmon
     password: cmon
-  image: severalnines/cmon:2.4.0-20548
-  devImage: severalnines/cmon:2.4.0-20548
+  # empty = severalnines/cmon:<appVersion from Chart.yaml>; set to override
+  image: ""
+  devImage: ""
   extra_args: # extra arguments for ClusterControl binary
     - -s
     - --no-log-db
