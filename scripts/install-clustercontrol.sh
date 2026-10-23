@@ -11,6 +11,10 @@
 #   4. helm upgrade --install
 #   5. backend CA bundle     - cmon generates its RPC certificate at runtime, so
 #                              it cannot be known until the pod is up
+#   6. backend TLS on        - helm upgrade --reuse-values pointing the chart's
+#                              BackendTLSPolicy at that bundle; without it the
+#                              gateway speaks plain HTTP to TLS-only cmon/ccmgr
+#                              and "/" returns 400
 #
 # Every step is idempotent; re-running is safe and is the intended way to apply
 # changes. For routine value changes you do NOT need this script - just:
@@ -22,13 +26,15 @@
 #   ./install-clustercontrol.sh [options]
 #
 #   -f, --values FILE     values file (repeatable)
+#       --fqdn NAME       hostname users browse to (sets fqdn); the Gateway only
+#                         answers for it. Pass it on every run, like -f files
 #   -n, --namespace NS    default: clustercontrol
 #   -r, --release NAME    default: clustercontrol
 #       --chart REF       default: s9s-ngf/clustercontrol (or a local path)
 #       --version VER     chart version (default: latest stable)
 #       --repo-url URL    helm repo to add as the alias in --chart
 #       --skip-crds       cluster CRDs already installed by someone else
-#       --skip-ca-bundle  you manage cmon-backend-ca yourself
+#       --skip-ca-bundle  you manage cmon-backend-ca and backend TLS yourself
 #       --dry-run         render only, change nothing
 #   -h, --help
 
@@ -40,7 +46,9 @@ CHART="s9s-ngf/clustercontrol"
 REPO_ALIAS="s9s-ngf"
 REPO_URL="https://severalnines.github.io/cc-helm-charts-nginx-gw-dev/"
 CHART_VERSION=""
+FQDN=""
 VALUES_ARGS=()
+CA_CONFIGMAP="cmon-backend-ca"
 SKIP_CRDS=0
 SKIP_CA_BUNDLE=0
 DRY_RUN=0
@@ -57,6 +65,7 @@ trap cleanup EXIT
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -f|--values)      VALUES_ARGS+=(-f "$2"); shift 2 ;;
+    --fqdn)           FQDN="$2"; shift 2 ;;
     -n|--namespace)   NAMESPACE="$2"; shift 2 ;;
     -r|--release)     RELEASE="$2"; shift 2 ;;
     --chart)          CHART="$2"; shift 2 ;;
@@ -65,7 +74,7 @@ while [[ $# -gt 0 ]]; do
     --skip-crds)      SKIP_CRDS=1; shift ;;
     --skip-ca-bundle) SKIP_CA_BUNDLE=1; shift ;;
     --dry-run)        DRY_RUN=1; shift ;;
-    -h|--help)        sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)        sed -n '2,/^#   -h, --help/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
 done
@@ -178,6 +187,18 @@ log "Installing/upgrading release ${RELEASE} in ${NAMESPACE}"
 helm_args=(upgrade --install "${RELEASE}" "${CHART_DIR}"
            --namespace "${NAMESPACE}" --create-namespace)
 [[ ${#VALUES_ARGS[@]} -gt 0 ]] && helm_args+=("${VALUES_ARGS[@]}")
+if [[ -n "${FQDN}" ]]; then
+  helm_args+=(--set "fqdn=${FQDN}")
+else
+  warn "No --fqdn given: fqdn comes from your -f files, or the chart default 'localhost'."
+fi
+# On a re-run the bundle already exists, so keep backend TLS on through this
+# upgrade instead of letting it drop to the chart default (off) until step 6.
+BACKEND_TLS_ARGS=(--set cmon.gateway.backendTLS.enabled=true
+                  --set "cmon.gateway.backendTLS.caCertificateRef=${CA_CONFIGMAP}")
+if (( ! SKIP_CA_BUNDLE )) && kubectl get configmap "${CA_CONFIGMAP}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+  helm_args+=("${BACKEND_TLS_ARGS[@]}")
+fi
 (( DRY_RUN )) && helm_args+=(--dry-run)
 helm "${helm_args[@]}"
 
@@ -224,9 +245,17 @@ wait "${PF_PID}" 2>/dev/null || true
 
 cat "${WORKDIR}/cmon-9501.crt" "${WORKDIR}/ccmgr.crt" > "${WORKDIR}/ca-bundle.crt"
 # key MUST be ca.crt - mandated by the Gateway API BackendTLSPolicy spec
-kubectl create configmap cmon-backend-ca -n "${NAMESPACE}" \
+kubectl create configmap "${CA_CONFIGMAP}" -n "${NAMESPACE}" \
   --from-file=ca.crt="${WORKDIR}/ca-bundle.crt" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+# ------------------------------------------------------- 6. backend TLS on
+# --reuse-values keeps everything step 4 set (fqdn, -f files); this only adds
+# the two backendTLS keys. Hooks run normally because step 3 created the
+# cert-generator RBAC.
+log "Enabling backend TLS (gateway -> cmon-master via ${CA_CONFIGMAP})"
+helm upgrade "${RELEASE}" "${CHART_DIR}" --namespace "${NAMESPACE}" \
+  --reuse-values "${BACKEND_TLS_ARGS[@]}"
 
 log "Done."
 echo

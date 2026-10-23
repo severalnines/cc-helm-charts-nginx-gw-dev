@@ -1,0 +1,73 @@
+name: Sync README to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: [README.md]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One sync at a time; a newer push waits for the running one.
+concurrency:
+  group: sync-readme-to-pages
+  cancel-in-progress: false
+
+env:
+  # Must be the branch GitHub Pages serves from (Settings -> Pages).
+  PAGES_BRANCH: gh-pages
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          path: main
+
+      - name: Checkout Pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PAGES_BRANCH }}
+          path: pages
+
+      # Pages only publishes this branch, so relative links (HOW-TO-USE-ME.md,
+      # docs/..., charts/...) would 404 there. Point them at main on GitHub.
+      - name: Copy README with absolute links
+        env:
+          BASE: https://github.com/${{ github.repository }}/blob/main/
+        run: |
+          python3 - <<'EOF'
+          import os, re, pathlib
+          base = os.environ["BASE"]
+          text = pathlib.Path("main/README.md").read_text()
+          def fix(m):
+              target = m.group(1)
+              if re.match(r'^(https?://|mailto:|#)', target):
+                  return m.group(0)
+              return "](" + base + target.removeprefix("./") + ")"
+          text = re.sub(r'\]\(([^)\s]+)\)', fix, text)
+          pathlib.Path("pages/README.md").write_text(text)
+          EOF
+
+      # Only README.md is staged: index.yaml and the chart packages that
+      # chart-releaser maintains on this branch are never touched.
+      - name: Commit and push if changed
+        working-directory: pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if git diff --cached --quiet; then
+            echo "README on ${PAGES_BRANCH} is already up to date"
+            exit 0
+          fi
+          git commit -m "Sync README from main@${GITHUB_SHA::7}"
+          # chart-releaser may push to the same branch at the same moment; rebase and retry.
+          for attempt in 1 2 3; do
+            git push origin "HEAD:${PAGES_BRANCH}" && exit 0
+            git pull --rebase origin "${PAGES_BRANCH}"
+          done
+          exit 1
